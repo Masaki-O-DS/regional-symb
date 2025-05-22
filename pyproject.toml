@@ -1,0 +1,36 @@
+[project]
+name = "regional-symb"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Masaki Ogawa", email = "78543705+Masaki-O-DS@users.noreply.github.com" }
+]
+dependencies = [
+    "streamlit>=1.45.0",
+    "fastapi>=0.115.12",
+    "uvicorn>=0.34.2",
+    "sqlalchemy>=2.0.40",
+    "requests>=2.32.3",
+    "matplotlib>=3.10.1",
+    "streamlit-calendar>=1.2.1",
+    "pandas>=2.2.3",
+    "numpy>=2.2.5",
+    "pydantic>=2.11.4",
+    "email-validator>=2.2.0",
+]
+readme = "README.md"
+requires-python = ">= 3.8"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.rye]
+managed = true
+dev-dependencies = []
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/regional_symb"]
