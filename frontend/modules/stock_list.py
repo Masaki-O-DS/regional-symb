@@ -1,58 +1,43 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
-import random
+from datetime import datetime
+from pathlib import Path
+from .func import load_data # Assuming load_data is in func.py at the same level
 
+# Define BASE_DIR and file_path
+BASE_DIR = Path(__file__).resolve().parents[2] # Should go up two levels from modules to regional-symb
+file_path = BASE_DIR / "backend/app/db/stock_data.json"
 
 def show():
     st.title("📦 備蓄一覧")
     st.write("災害用備蓄品の在庫を確認できます。")
 
-    # ダミーデータ生成
-    names = [
-        "水",
-        "缶詰",
-        "カップ麺",
-        "乾パン",
-        "パン",
-        "バッテリー",
-        "ライト",
-        "救急セット",
-        "毛布",
-        "携帯トイレ",
-        "ラジオ",
-        "マスク",
-        "常備薬",
-        "消毒液",
-        "軍手",
-        "包帯",
-        "乾燥果物",
-        "ビスケット",
-        "ミルク",
-        "ガスボンベ",
-    ]
-    locations = ["倉庫A", "倉庫B", "屋内", "屋外", "地下室"]
+    raw_data = load_data(file_path)
+    data_for_df = []
     today = datetime.today().date()
 
-    data = []
-    for i in range(20):
-        name = names[i % len(names)]
-        quantity = random.randint(1, 50)
-        # -30日から+365日の間で期限を設定
-        exp_date = today + timedelta(days=random.randint(-30, 365))
-        # 残日数を絶対値に（マイナスをプラス化）
-        remaining = abs((exp_date - today).days)
-        data.append(
-            {
-                "物品名": name,
-                "数量": quantity,
-                "消費期限": exp_date.strftime("%Y-%m-%d"),
-                "残り消費期限（日）": remaining,
-                "保管場所": random.choice(locations),
-            }
-        )
+    if raw_data:
+        for item in raw_data:
+            exp_date_str = item.get("消費期限")
+            if exp_date_str:
+                exp_date_obj = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
+                remaining_days = abs((exp_date_obj - today).days)
+            else:
+                # Handle cases where 消費期限 might be missing or null
+                exp_date_obj = None # Or some default date, or skip the item
+                remaining_days = -1 # Or some other indicator
 
-    df = pd.DataFrame(data)
+            data_for_df.append(
+                {
+                    "物品名": item.get("品名"),
+                    "数量": item.get("数量"),
+                    "消費期限": exp_date_str,
+                    "残り消費期限（日）": remaining_days,
+                    "保管場所": item.get("格納場所"),
+                }
+            )
+
+    df = pd.DataFrame(data_for_df)
 
     # 残り消費期限が30日以下の行全体を赤字にするスタイリング
     def highlight_expired(row):
