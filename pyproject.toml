@@ -6,7 +6,6 @@ authors = [
     { name = "Masaki Ogawa", email = "78543705+Masaki-O-DS@users.noreply.github.com" }
 ]
 dependencies = [
-    "streamlit>=1.45.0",
     "requests>=2.32.3",
     "matplotlib>=3.10.1",
     "streamlit-calendar>=1.2.1",
@@ -14,6 +13,7 @@ dependencies = [
     "numpy>=2.2.5",
     "pydantic>=2.11.4",
     "email-validator>=2.2.0",
+    "streamlit>=1.30.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.8"
