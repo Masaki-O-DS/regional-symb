@@ -22,7 +22,7 @@ menu = {
     "🔧 管理者ページ": "admin",
 }
 
-
+ 
 # サイドバーにメニューを表示
 st.sidebar.title("メニュー")
 selection = st.sidebar.selectbox(
