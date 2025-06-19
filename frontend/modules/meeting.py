@@ -94,17 +94,15 @@ def show():
     st.write(content)
 
     st.markdown("---")
-
     st.subheader("🎤 音声から議事録を自動生成")
 
-    # --- 状態管理の初期化 ---
+    # セッション状態の初期化
     if "audio_buffer" not in st.session_state:
         st.session_state.audio_buffer = None
-    if "uploaded_audio_bytes" not in st.session_state:
-        st.session_state.uploaded_audio_bytes = None
+    if "uploaded_file_info" not in st.session_state:
+        st.session_state.uploaded_file_info = None
 
-    # ★★★ ここに録音部品を移動させたよ！ ★★★
-    # タブの外に置くことで、いつでも状態を確認できるようになるんだ。
+    # WebRTCコンポーネントの配置
     webrtc_ctx = webrtc_streamer(
         key="audio-recorder",
         mode=WebRtcMode.SENDONLY,
@@ -112,59 +110,71 @@ def show():
         media_stream_constraints={"audio": True, "video": False},
     )
 
-    # --- タブで機能を切り替え ---
-    tab1, tab2 = st.tabs(["🎤 ライブ録音から作成", "⬆️ ファイルをアップロードして作成"])
-
-    with tab1:
-        st.write("上のSTARTボタンを押して録音を開始し、終わったらSTOPボタンを押してください。")
-        # ここではもう、webrtc_streamerを呼び出す必要はないよ！
-
-    with tab2:
-        st.write("MP3, WAV, M4A, MP4形式の音声・動画ファイルをアップロードして、議事録を作成します。")
-        uploaded_file = st.file_uploader(
-            "音声または動画ファイルを選択してください",
-            type=["mp3", "wav", "m4a", "mp4"],
-            key="file_uploader"
-        )
-        if uploaded_file is not None:
-            st.session_state.uploaded_audio_bytes = uploaded_file.read()
-            st.session_state.audio_buffer = None
-            st.success(f"ファイル「{uploaded_file.name}」を準備しました。")
-            if uploaded_file.type.startswith("video/"):
-                st.video(st.session_state.uploaded_audio_bytes)
-            else:
-                st.audio(st.session_state.uploaded_audio_bytes)
-            st.rerun()
-
-    # --- STOPボタンが押された時の処理 ---
-    # この部分はタブの外にあるから、webrtc_ctxが正しく見えるよ！
+    # 録音停止時の処理
     if not webrtc_ctx.state.playing and not frames_queue.empty():
         audio_frames = []
         while not frames_queue.empty():
             audio_frames.append(frames_queue.get())
         st.session_state.audio_buffer = audio_frames
-        st.session_state.uploaded_audio_bytes = None
+        st.session_state.uploaded_file_info = None
         st.rerun()
+
+    # 機能選択タブ
+    tab1, tab2 = st.tabs(["🎤 ライブ録音から作成", "⬆️ ファイルをアップロードして作成"])
+
+    with tab1:
+        st.write("上のSTARTボタンで録音を開始し、STOPで終了します。")
+
+    with tab2:
+        st.write("MP3, WAV, M4A, MP4形式の音声・動画ファイルをアップロードします。")
+        uploaded_file = st.file_uploader(
+            "音声または動画ファイルを選択",
+            type=["mp3", "wav", "m4a", "mp4"],
+            key="file_uploader"
+        )
+        
+        # ▼▼▼ ファイルアップロード時のロジック ▼▼▼
+        if uploaded_file is not None:
+            # アップロードされたら、ファイル情報をセッション状態に即時保存
+            st.session_state.uploaded_file_info = {
+                "name": uploaded_file.name,
+                "type": uploaded_file.type,
+                "data": uploaded_file.read()
+            }
+            # 競合しないように録音データはクリア
+            st.session_state.audio_buffer = None
+            # ★★★ 問題の原因だった st.rerun() を削除しました ★★★
+            # これにより、1回の実行で状態の保存とUIの更新が完結します。
 
     st.markdown("---")
 
-    # --- 要約生成ボタンのロジック ---
-    if st.session_state.uploaded_audio_bytes:
-        st.success("アップロードされたファイルから要約を生成できます。")
-        is_disabled = False
+    # --- プレビューとボタンの状態管理 ---
+    audio_data_source = None
+    # まず、アップロードされたファイルの情報を確認
+    if st.session_state.uploaded_file_info:
+        audio_data_source = "upload"
+        st.success(f"ファイル「{st.session_state.uploaded_file_info['name']}」が準備完了しました。")
+        # プレビュー表示
+        if st.session_state.uploaded_file_info['type'].startswith("video/"):
+            st.video(st.session_state.uploaded_file_info['data'])
+        else:
+            st.audio(st.session_state.uploaded_file_info['data'])
+    # 次に、録音データを確認
     elif st.session_state.audio_buffer:
-        st.success("録音データから要約を生成できます。")
-        is_disabled = False
-    else:
-        st.info("ライブ録音、またはファイルのアップロードをしてください。")
-        is_disabled = True
+        audio_data_source = "record"
+        st.success("録音データが準備完了しました。")
+    
+    # データソースの有無によってボタンの有効/無効を決定
+    is_disabled = not bool(audio_data_source)
+    if is_disabled:
+        st.info("ライブ録音、またはファイルをアップロードしてください。")
 
+    # 「要約を生成」ボタン
     if st.button("要約を生成", disabled=is_disabled):
         audio_data = None
-        
-        if st.session_state.uploaded_audio_bytes:
-            audio_data = st.session_state.uploaded_audio_bytes
-        elif st.session_state.audio_buffer:
+        if audio_data_source == "upload":
+            audio_data = st.session_state.uploaded_file_info['data']
+        elif audio_data_source == "record":
             with st.spinner("録音データを変換中..."):
                 audio_frames = st.session_state.audio_buffer
                 output_bytesio = BytesIO()
@@ -179,21 +189,19 @@ def show():
                 audio_data = output_bytesio.read()
         
         if audio_data:
-            with st.spinner("AIが議事録を作成中…これには数分かかることがあります。"):
+            with st.spinner("AIが議事録を作成中…"):
                 try:
                     files = {"audio_file": ("uploaded_file", audio_data)}
                     response = requests.post(BACKEND_URL, files=files, timeout=600)
-
                     if response.status_code == 200:
                         result = response.json()
                         st.session_state.full_text = result.get("full_text")
                         st.session_state.summary = result.get("summary")
                         st.session_state.audio_buffer = None 
-                        st.session_state.uploaded_audio_bytes = None
+                        st.session_state.uploaded_file_info = None
                         st.rerun()
                     else:
                         st.error(f"エラーが発生しました: {response.status_code} - {response.text}")
-
                 except requests.exceptions.RequestException as e:
                     st.error(f"バックエンドへの接続に失敗しました: {e}")
 

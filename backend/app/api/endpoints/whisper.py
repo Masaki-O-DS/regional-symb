@@ -4,6 +4,10 @@ import uuid
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from openai import OpenAI
 import whisper
+from dotenv import load_dotenv # ◀️ 1. この行を追加！
+
+# --- .env ファイルをロード ---
+load_dotenv() # ◀️ 2. この行を追加！
 
 router = APIRouter()
 
