@@ -1,50 +1,10 @@
-# Python generated files
+# python generated files
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg
-*.egg-info/
-dist/
+*.py[oc]
 build/
-.eggs/
+dist/
+wheels/
+*.egg-info
 
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Rye lock files
-requirements.lock
-requirements-dev.lock
-
-# Data files (user data should not be shared)
-backend/app/db/*.json
-
-# Streamlit
-.streamlit/
-
-# IDEs and editors
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Logs
-*.log
-logs/
-
-# Environment variables
-.env
-.env.local
-.env.*.local
+# venv
+.venv

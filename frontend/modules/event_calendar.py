@@ -16,7 +16,8 @@ def show():
     st.markdown("---")
 
     # JSONからイベント情報を読み込む
-    events = load_data(file_path)
+    data = load_data(file_path)
+    events = data.get("events", [])
 
     # カレンダー表示設定
     calendar_options = {

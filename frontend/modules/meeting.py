@@ -1,4 +1,18 @@
 import streamlit as st
+import requests
+from io import BytesIO
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
+import av
+import threading
+import queue
+
+# --- バックエンドのURL ---
+# main.pyで /whisper に変更したのを反映
+BACKEND_URL = "http://127.0.0.1:8000/whisper/process-audio/"
+
+# --- 音声フレームを安全に受け渡すための箱 ---
+# この箱（キュー）を使うのが、すれ違いを防ぐための大事なポイントだよ！
+frames_queue = queue.Queue()
 
 
 def show():
@@ -80,20 +94,120 @@ def show():
     st.write(content)
 
     st.markdown("---")
+    st.subheader("🎤 音声から議事録を自動生成")
 
-    # ——— 音声データアップロード & 要約生成 ——— #
-    st.subheader("🎤 音声から議事録要約を生成")
-    audio_file = st.file_uploader(
-        "音声ファイルをアップロード", type=["wav", "mp3", "m4a"]
+    # セッション状態の初期化
+    if "audio_buffer" not in st.session_state:
+        st.session_state.audio_buffer = None
+    if "uploaded_file_info" not in st.session_state:
+        st.session_state.uploaded_file_info = None
+
+    # WebRTCコンポーネントの配置
+    webrtc_ctx = webrtc_streamer(
+        key="audio-recorder",
+        mode=WebRtcMode.SENDONLY,
+        audio_frame_callback=lambda frame: frames_queue.put(frame),
+        media_stream_constraints={"audio": True, "video": False},
     )
-    if audio_file:
-        st.audio(audio_file)
-    if st.button("要約を生成"):
-        if not audio_file:
-            st.warning("まずは音声ファイルをアップロードしてください。")
+
+    # 録音停止時の処理
+    if not webrtc_ctx.state.playing and not frames_queue.empty():
+        audio_frames = []
+        while not frames_queue.empty():
+            audio_frames.append(frames_queue.get())
+        st.session_state.audio_buffer = audio_frames
+        st.session_state.uploaded_file_info = None
+        st.rerun()
+
+    # 機能選択タブ
+    tab1, tab2 = st.tabs(["🎤 ライブ録音から作成", "⬆️ ファイルをアップロードして作成"])
+
+    with tab1:
+        st.write("上のSTARTボタンで録音を開始し、STOPで終了します。")
+
+    with tab2:
+        st.write("MP3, WAV, M4A, MP4形式の音声・動画ファイルをアップロードします。")
+        uploaded_file = st.file_uploader(
+            "音声または動画ファイルを選択",
+            type=["mp3", "wav", "m4a", "mp4"],
+            key="file_uploader"
+        )
+        
+        # ▼▼▼ ファイルアップロード時のロジック ▼▼▼
+        if uploaded_file is not None:
+            # アップロードされたら、ファイル情報をセッション状態に即時保存
+            st.session_state.uploaded_file_info = {
+                "name": uploaded_file.name,
+                "type": uploaded_file.type,
+                "data": uploaded_file.read()
+            }
+            # 競合しないように録音データはクリア
+            st.session_state.audio_buffer = None
+            # ★★★ 問題の原因だった st.rerun() を削除しました ★★★
+            # これにより、1回の実行で状態の保存とUIの更新が完結します。
+
+    st.markdown("---")
+
+    # --- プレビューとボタンの状態管理 ---
+    audio_data_source = None
+    # まず、アップロードされたファイルの情報を確認
+    if st.session_state.uploaded_file_info:
+        audio_data_source = "upload"
+        st.success(f"ファイル「{st.session_state.uploaded_file_info['name']}」が準備完了しました。")
+        # プレビュー表示
+        if st.session_state.uploaded_file_info['type'].startswith("video/"):
+            st.video(st.session_state.uploaded_file_info['data'])
         else:
-            with st.spinner("AIが要約を生成中…"):
-                # ここにAI要約処理を組み込んでください
-                summary = "（ここに自動生成された要約が表示されます）"
-            st.subheader("📝 要約結果")
-            st.write(summary)
+            st.audio(st.session_state.uploaded_file_info['data'])
+    # 次に、録音データを確認
+    elif st.session_state.audio_buffer:
+        audio_data_source = "record"
+        st.success("録音データが準備完了しました。")
+    
+    # データソースの有無によってボタンの有効/無効を決定
+    is_disabled = not bool(audio_data_source)
+    if is_disabled:
+        st.info("ライブ録音、またはファイルをアップロードしてください。")
+
+    # 「要約を生成」ボタン
+    if st.button("要約を生成", disabled=is_disabled):
+        audio_data = None
+        if audio_data_source == "upload":
+            audio_data = st.session_state.uploaded_file_info['data']
+        elif audio_data_source == "record":
+            with st.spinner("録音データを変換中..."):
+                audio_frames = st.session_state.audio_buffer
+                output_bytesio = BytesIO()
+                with av.open(output_bytesio, mode="w", format="mp4") as container:
+                    stream = container.add_stream("aac", rate=48000)
+                    for frame in audio_frames:
+                        for packet in stream.encode(frame):
+                            container.mux(packet)
+                    for packet in stream.encode(None):
+                        container.mux(packet)
+                output_bytesio.seek(0)
+                audio_data = output_bytesio.read()
+        
+        if audio_data:
+            with st.spinner("AIが議事録を作成中…"):
+                try:
+                    files = {"audio_file": ("uploaded_file", audio_data)}
+                    response = requests.post(BACKEND_URL, files=files, timeout=600)
+                    if response.status_code == 200:
+                        result = response.json()
+                        st.session_state.full_text = result.get("full_text")
+                        st.session_state.summary = result.get("summary")
+                        st.session_state.audio_buffer = None 
+                        st.session_state.uploaded_file_info = None
+                        st.rerun()
+                    else:
+                        st.error(f"エラーが発生しました: {response.status_code} - {response.text}")
+                except requests.exceptions.RequestException as e:
+                    st.error(f"バックエンドへの接続に失敗しました: {e}")
+
+    # --- 結果の表示 ---
+    if "full_text" in st.session_state:
+        st.subheader("📝 要約結果")
+        st.text_area("要約", height=200, key="summary")
+        st.subheader("📖 校正済み全文")
+        st.text_area("全文", height=400, key="full_text")
