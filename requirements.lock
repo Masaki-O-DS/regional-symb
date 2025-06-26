@@ -47,10 +47,6 @@ charset-normalizer==3.4.2
 click==8.2.1
     # via streamlit
     # via uvicorn
-colorama==0.4.6
-    # via click
-    # via tqdm
-    # via uvicorn
 cryptography==45.0.4
     # via aiortc
     # via pyopenssl
@@ -227,8 +223,8 @@ urllib3==2.4.0
     # via requests
 uvicorn==0.34.3
     # via region-project
-watchdog==6.0.0
-    # via streamlit
+uvloop==0.21.0
+    # via uvicorn
 watchfiles==1.1.0
     # via uvicorn
 websockets==15.0.1
