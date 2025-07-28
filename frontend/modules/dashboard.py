@@ -48,4 +48,8 @@ def show():
     event_titles = ["4/20 春の清掃活動", "5/2~5/10 火災予防習慣", "5/20 春のパン祭り"]
     event_list_text = "\n".join([f"- {title}" for title in event_titles])
     st.warning(event_list_text)
-    st.button("イベント詳細を見る")
+    if st.button(
+        "イベント詳細を見る",
+        on_click=lambda: st.session_state.update({"menu_selection": "📅 イベントカレンダー"}),
+    ):
+        pass
